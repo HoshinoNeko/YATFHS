@@ -55,7 +55,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ id.meta.outputs.tags }}
-          labels: ${{ id.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}      # <- 修复这里
+          labels: ${{ steps.meta.outputs.labels }}  # <- 修复这里
           cache-from: type=gha
           cache-to: type=gha,mode=max
