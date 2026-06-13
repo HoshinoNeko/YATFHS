@@ -1,0 +1,20 @@
+{
+  "host": "0.0.0.0",
+  "port": "8080",
+  "base_url": "http://localhost:8080",
+  "storage_dir": "./data",
+  "max_file_size_bytes": 104857600,
+  "default_expire_sec": 3600,
+  "min_expire_sec": 60,
+  "max_expire_sec": 172800,
+  "cleanup_interval": "5m",
+  "rate_limit": {
+    "upload_requests_per_min": 10,
+    "download_requests_per_min": 60,
+    "upload_bytes_per_hour": 524288000
+  },
+  "ip_whitelist": [
+    "127.0.0.1",
+    "::1"
+  ]
+}

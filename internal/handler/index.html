@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YATFHS — Yet Another Temporary File Hosting Service</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:        #0d0d0f;
+    --surface:   #141418;
+    --border:    #252530;
+    --border-hi: #3a3a50;
+    --text:      #c8c8d8;
+    --muted:     #5a5a72;
+    --accent:    #7c6af7;
+    --accent-hi: #9d8fff;
+    --green:     #4ade98;
+    --red:       #f87171;
+    --yellow:    #fbbf4a;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 300;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* grid noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,106,247,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,106,247,0.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    max-width: 680px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 3rem 1.25rem;
+  }
+
+  /* header */
+  .header {
+    margin-bottom: 2.5rem;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 1.25rem;
+    color: var(--accent-hi);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .logo .prompt { color: var(--accent); }
+
+  .tagline {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* drop zone */
+  .drop-zone {
+    border: 1.5px dashed var(--border-hi);
+    border-radius: 6px;
+    padding: 3rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+    margin-bottom: 1.5rem;
+    position: relative;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124,106,247,0.03);
+  }
+
+  .drop-zone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+    line-height: 1;
+  }
+
+  .drop-primary {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+  }
+
+  .drop-secondary {
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .file-selected {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--green);
+    margin-top: 0.75rem;
+    word-break: break-all;
+  }
+
+  /* form controls */
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (min-width: 520px) {
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1rem;
+      align-items: flex-end;
+    }
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+  }
+
+  .expire-row {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .expire-btn {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.42rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.03em;
+    flex: 1;
+    min-width: 60px;
+    text-align: center;
+  }
+
+  @media (min-width: 520px) {
+    .expire-btn {
+      flex: none;
+    }
+  }
+
+  .expire-btn:hover { border-color: var(--border-hi); color: var(--text); }
+  .expire-btn.active {
+    border-color: var(--accent);
+    color: var(--accent-hi);
+    background: rgba(124,106,247,0.08);
+  }
+
+  .btn-upload {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 0.9rem;
+    padding: 0.65rem 1.75rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: background 0.15s, transform 0.1s;
+    white-space: nowrap;
+    width: 100%;
+  }
+  @media (min-width: 520px) {
+    .btn-upload { width: auto; }
+  }
+  .btn-upload:hover { background: var(--accent-hi); }
+  .btn-upload:active { transform: scale(0.98); }
+  .btn-upload:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* progress */
+  .progress-wrap {
+    height: 3px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+    margin: 1rem 0;
+    display: none;
+  }
+  .progress-wrap.visible { display: block; }
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-hi));
+    transition: width 0.1s linear;
+    border-radius: 99px;
+  }
+
+  /* result card */
+  .result {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    padding: 1.25rem;
+    margin-top: 1.5rem;
+    display: none;
+  }
+  .result.visible { display: block; }
+  .result.error { border-color: var(--red); }
+  .result.success { border-color: rgba(74,222,152,0.25); }
+
+  .result-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+  }
+  .result.success .result-label { color: var(--green); }
+  .result.error .result-label { color: var(--red); }
+
+  .result-url {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--accent-hi);
+    word-break: break-all;
+    margin-bottom: 1rem;
+    background: rgba(0,0,0,0.15);
+    padding: 0.5rem;
+    border-radius: 3px;
+  }
+
+  .copy-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-copy {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    padding: 0.4rem 0.8rem;
+    background: transparent;
+    border: 1px solid var(--border-hi);
+    color: var(--text);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+    text-align: center;
+  }
+  .btn-copy:hover { border-color: var(--accent); color: var(--accent-hi); }
+  .btn-copy.copied { border-color: var(--green); color: var(--green); }
+
+  .result-error-msg {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--red);
+  }
+
+  /* divider */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.5rem 0 2rem;
+  }
+
+  /* Collapsible API Docs */
+  .api-section .api-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    padding: 0.5rem 0;
+  }
+
+  .api-section h2 {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    transition: color 0.2s ease;
+  }
+
+  .api-section .api-trigger:hover h2 {
+    color: var(--text);
+  }
+
+  .api-icon {
+    font-size: 0.75rem;
+    color: var(--muted);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .api-section.active .api-icon {
+    transform: rotate(90deg);
+    color: var(--accent-hi);
+  }
+
+  .api-content {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  }
+
+  .api-section.active .api-content {
+    max-height: 1200px; /* 大于实际高度即可 */
+    opacity: 1;
+    margin-top: 1.5rem;
+  }
+
+  .api-block {
+    margin-bottom: 1.5rem;
+  }
+
+  .api-block h3 {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.9rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: #a0a0c0;
+    overflow-x: auto;
+    line-height: 1.65;
+  }
+
+  .kw { color: var(--accent-hi); }
+  .str { color: var(--green); }
+  .cmt { color: var(--muted); }
+  .num { color: var(--yellow); }
+
+  /* footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 1.25rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: auto;
+  }
+
+  @media (max-width: 440px) {
+    footer { flex-direction: column; gap: 0.35rem; align-items: center; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="header">
+    <div class="logo"><span class="prompt">$</span> YATFHS</div>
+    <p class="tagline">ephemeral file hosting · max 100 MB · up to 48 hours</p>
+  </header>
+
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" />
+    <div class="drop-icon">⬆</div>
+    <div class="drop-primary">Drop file here or click to browse</div>
+    <div class="drop-secondary">max 100 MB per file</div>
+    <div class="file-selected" id="fileLabel"></div>
+  </div>
+
+  <div class="controls">
+    <div class="field">
+      <label>Expires after</label>
+      <div class="expire-row">
+        <button class="expire-btn active" data-secs="3600">1 h</button>
+        <button class="expire-btn" data-secs="14400">4 h</button>
+        <button class="expire-btn" data-secs="43200">12 h</button>
+        <button class="expire-btn" data-secs="86400">24 h</button>
+        <button class="expire-btn" data-secs="172800">48 h</button>
+      </div>
+    </div>
+    <button class="btn-upload" id="uploadBtn" disabled>Upload</button>
+  </div>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <div class="result" id="resultCard">
+    <div class="result-label" id="resultLabel"></div>
+    <div class="result-url" id="resultUrl"></div>
+    <div class="result-error-msg" id="resultError"></div>
+    <div class="copy-row" id="copyRow">
+      <button class="btn-copy" id="copyURL">copy url</button>
+      <button class="btn-copy" id="copyCurl">copy curl</button>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <section class="api-section" id="apiSection">
+    <div class="api-trigger" id="apiTrigger">
+      <h2>API Reference</h2>
+      <span class="api-icon">▶</span>
+    </div>
+
+    <div class="api-content">
+      <div class="api-block">
+        <h3>Upload a file</h3>
+        <pre><span class="cmt"># Basic upload</span>
+<span class="kw">curl</span> -F <span class="str">"file=@/path/to/file.zip"</span> \
+     <span class="str">"/api/v1/upload"</span>
+
+<span class="cmt"># With custom expiry (seconds)</span>
+<span class="kw">curl</span> -F <span class="str">"file=@/path/to/file.zip"</span> \
+     -F <span class="str">"expire=14400"</span> \
+     <span class="str">"/api/v1/upload"</span></pre>
+      </div>
+
+      <div class="api-block">
+        <h3>Response</h3>
+        <pre>{
+  <span class="kw">"status"</span>: <span class="str">"success"</span>,
+  <span class="kw">"data"</span>: {
+    <span class="kw">"url"</span>: <span class="str">"https://your-host/{id}/{filename}"</span>
+  }
+}</pre>
+      </div>
+
+      <div class="api-block">
+        <h3>Parameters</h3>
+        <pre><span class="kw">file</span>    <span class="cmt">[required]</span>  multipart file, max 100 MB
+<span class="kw">expire</span>  <span class="cmt">[optional]</span>  seconds until deletion, default <span class="num">3600</span></pre>
+      </div>
+
+      <div class="api-block">
+        <h3>Download</h3>
+        <pre><span class="kw">GET</span> /{id}/{filename}</pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>YATFHS</span>
+  <span>files auto-deleted on expiry · no registration required</span>
+</footer>
+
+<script>
+  const dropZone   = document.getElementById('dropZone');
+  const fileInput  = document.getElementById('fileInput');
+  const fileLabel  = document.getElementById('fileLabel');
+  const uploadBtn  = document.getElementById('uploadBtn');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar  = document.getElementById('progressBar');
+  const resultCard = document.getElementById('resultCard');
+  const resultLabel = document.getElementById('resultLabel');
+  const resultUrl  = document.getElementById('resultUrl');
+  const resultError = document.getElementById('resultError');
+  const copyRow    = document.getElementById('copyRow');
+  const copyURL    = document.getElementById('copyURL');
+  const copyCurl   = document.getElementById('copyCurl');
+  const apiSection = document.getElementById('apiSection');
+  const apiTrigger = document.getElementById('apiTrigger');
+
+  let selectedExpire = 3600; // default 1h
+  let currentURL = '';
+
+  // Expire buttons selector
+  document.querySelectorAll('.expire-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.expire-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedExpire = parseInt(btn.dataset.secs);
+    });
+  });
+
+  // Toggle API Section
+  apiTrigger.addEventListener('click', () => {
+    apiSection.classList.toggle('active');
+  });
+
+  // Drag & drop handlers
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length) setFile(files[0]);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) setFile(fileInput.files[0]);
+  });
+
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+    return (b/1024/1024).toFixed(2) + ' MB';
+  }
+
+  function setFile(f) {
+    fileLabel.textContent = f.name + ' · ' + formatBytes(f.size);
+    uploadBtn.disabled = false;
+  }
+
+  // Upload handler
+  uploadBtn.addEventListener('click', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    uploadBtn.disabled = true;
+    progressWrap.classList.add('visible');
+    progressBar.style.width = '0%';
+    resultCard.className = 'result';
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('expire', String(selectedExpire));
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1/upload');
+
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) {
+        progressBar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      progressBar.style.width = '100%';
+      setTimeout(() => progressWrap.classList.remove('visible'), 600);
+      uploadBtn.disabled = false;
+
+      let resp;
+      try { resp = JSON.parse(xhr.responseText); } catch { resp = null; }
+
+      if (xhr.status === 200 && resp && resp.status === 'success') {
+        currentURL = resp.data.url;
+        resultLabel.textContent = '✓ upload complete';
+        resultUrl.textContent = currentURL;
+        resultError.textContent = '';
+        copyRow.style.display = 'flex';
+        resultCard.className = 'result success visible';
+      } else {
+        const msg = resp ? (resp.message || 'upload failed') : 'server error';
+        resultLabel.textContent = '✗ upload failed';
+        resultError.textContent = msg;
+        resultUrl.textContent = '';
+        copyRow.style.display = 'none';
+        resultCard.className = 'result error visible';
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      uploadBtn.disabled = false;
+      progressWrap.classList.remove('visible');
+      resultLabel.textContent = '✗ network error';
+      resultError.textContent = 'Could not reach server';
+      resultUrl.textContent = '';
+      copyRow.style.display = 'none';
+      resultCard.className = 'result error visible';
+    });
+
+    xhr.send(fd);
+  });
+
+  // Copy operations
+// Copy operations with Fallback for non-secure HTTP environments
+  function copyToClipboard(text, btn) {
+    if (navigator.clipboard && window.isSecureContext) {
+      // 优先使用现代安全 API
+      navigator.clipboard.writeText(text).then(() => flashCopied(btn));
+    } else {
+      // 降级方案：支持非 HTTPS / 内网 IP 访问
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      // 防止页面滚动
+      textArea.style.position = 'fixed';
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.width = '2em';
+      textArea.style.height = '2em';
+      textArea.style.padding = '0';
+      textArea.style.border = 'none';
+      textArea.style.outline = 'none';
+      textArea.style.boxShadow = 'none';
+      textArea.style.background = 'transparent';
+      
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          flashCopied(btn);
+        } else {
+          console.error('Fallback: Copying text command was unsuccessful');
+        }
+      } catch (err) {
+        console.error('Fallback: Oops, unable to copy', err);
+      }
+
+      document.body.removeChild(textArea);
+    }
+  }
+
+  function flashCopied(btn) {
+    btn.classList.add('copied');
+    const orig = btn.textContent;
+    btn.textContent = 'copied!';
+    setTimeout(() => { btn.classList.remove('copied'); btn.textContent = orig; }, 1800);
+  }
+
+  copyURL.addEventListener('click', () => {
+    copyToClipboard(currentURL, copyURL);
+  });
+
+  copyCurl.addEventListener('click', () => {
+    copyToClipboard('curl -OJ "' + currentURL + '"', copyCurl);
+  });
+</script>
+</body>
+</html>
