@@ -1,7 +1,8 @@
 version: "3.9"
 services:
   tmpstore:
-    build: .
+    #build: .
+    image: ghcr.io/hoshinoneko/yatfhs:latest
     ports:
       - "8080:8080"
     volumes:
