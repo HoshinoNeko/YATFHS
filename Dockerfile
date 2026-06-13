@@ -2,7 +2,7 @@ FROM golang:1.22-alpine AS builder
 WORKDIR /src
 COPY go.mod .
 COPY . .
-RUN go build -ldflags="-s -w" -o /tmpstore ./cmd/main.go
+RUN go build -ldflags="-s -w" -o /tmpstore ./main.go
 
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata
