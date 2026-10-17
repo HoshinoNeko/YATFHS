@@ -1,7 +1,7 @@
 {
   "host": "0.0.0.0",
   "port": "8080",
-  "base_url": "http://localhost:8080",
+  "base_url": "",
   "storage_dir": "./data",
   "max_file_size_bytes": 104857600,
   "default_expire_sec": 3600,
@@ -16,5 +16,13 @@
   "ip_whitelist": [
     "127.0.0.1",
     "::1"
-  ]
+  ],
+  "expire_options_sec": [
+    3600,
+    14400,
+    43200,
+    86400,
+    172800
+  ],
+  "trusted_proxies": []
 }

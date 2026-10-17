@@ -1,8 +1,7 @@
-version: "3.9"
 services:
   tmpstore:
-    #build: .
-    image: ghcr.io/hoshinoneko/yatfhs:latest
+    build: .
+    image: yatfhs:local
     ports:
       - "8080:8080"
     volumes:
@@ -11,3 +10,4 @@ services:
     restart: unless-stopped
     environment:
       - TZ=UTC
+      - YATFHS_ADMIN_TOKEN=${YATFHS_ADMIN_TOKEN:-}
