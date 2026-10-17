@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -46,10 +47,10 @@ func (b *tokenBucket) Allow() bool {
 
 // bytesBucket tracks upload bytes per hour per IP.
 type bytesBucket struct {
-	bytes      int64
-	maxBytes   int64
-	windowEnd  time.Time
-	mu         sync.Mutex
+	bytes     int64
+	maxBytes  int64
+	windowEnd time.Time
+	mu        sync.Mutex
 }
 
 func newBytesBucket(maxBytes int64) *bytesBucket {
@@ -68,7 +69,7 @@ func (b *bytesBucket) Allow(n int64) bool {
 		b.bytes = 0
 		b.windowEnd = now.Add(time.Hour)
 	}
-	if b.bytes+n > b.maxBytes {
+	if n < 0 || n > b.maxBytes-b.bytes {
 		return false
 	}
 	b.bytes += n
@@ -82,6 +83,7 @@ type Limiter struct {
 	downloads   map[string]*tokenBucket
 	uploadBytes map[string]*bytesBucket
 	whitelist   map[string]bool
+	trusted     []*net.IPNet
 
 	uploadRPM   int
 	downloadRPM int
@@ -156,58 +158,90 @@ func (l *Limiter) cleanupLoop() {
 	ticker := time.NewTicker(10 * time.Minute)
 	for range ticker.C {
 		l.mu.Lock()
-		// Simple cleanup: reset all maps periodically
-		// In production you'd track last-access time instead
-		l.uploads = make(map[string]*tokenBucket)
-		l.downloads = make(map[string]*tokenBucket)
-		l.uploadBytes = make(map[string]*bytesBucket)
+		// Retain live hourly quotas; resetting every ten minutes allowed quota bypass.
+		now := time.Now()
+		for ip, b := range l.uploads {
+			b.mu.Lock()
+			stale := now.Sub(b.lastRefill) > time.Hour
+			b.mu.Unlock()
+			if stale {
+				delete(l.uploads, ip)
+			}
+		}
+		for ip, b := range l.downloads {
+			b.mu.Lock()
+			stale := now.Sub(b.lastRefill) > time.Hour
+			b.mu.Unlock()
+			if stale {
+				delete(l.downloads, ip)
+			}
+		}
+		for ip, b := range l.uploadBytes {
+			b.mu.Lock()
+			stale := now.After(b.windowEnd)
+			b.mu.Unlock()
+			if stale {
+				delete(l.uploadBytes, ip)
+			}
+		}
 		l.mu.Unlock()
 	}
 }
 
-// ExtractIP gets the real client IP, respecting X-Forwarded-For and X-Real-IP.
+// ExtractIP uses the socket peer. Proxy headers are accepted only from configured proxies.
 func ExtractIP(r *http.Request) string {
-	// X-Real-IP (set by nginx etc.)
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		if parsed := net.ParseIP(ip); parsed != nil {
-			return parsed.String()
-		}
-	}
-	// X-Forwarded-For (leftmost = original client)
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		parts := splitAndTrim(fwd, ',')
-		if len(parts) > 0 {
-			if parsed := net.ParseIP(parts[0]); parsed != nil {
-				return parsed.String()
-			}
-		}
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
 }
-
-func splitAndTrim(s string, sep rune) []string {
-	var out []string
-	start := 0
-	for i, c := range s {
-		if c == sep {
-			out = append(out, trimSpace(s[start:i]))
-			start = i + 1
+func (l *Limiter) SetTrustedProxies(cidrs []string) error {
+	for _, value := range cidrs {
+		if ip := net.ParseIP(value); ip != nil {
+			if ip.To4() != nil {
+				value += "/32"
+			} else {
+				value += "/128"
+			}
+		}
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			return err
+		}
+		l.trusted = append(l.trusted, network)
+	}
+	return nil
+}
+func (l *Limiter) IsTrustedProxy(ip string) bool {
+	for _, n := range l.trusted {
+		if n.Contains(net.ParseIP(ip)) {
+			return true
 		}
 	}
-	out = append(out, trimSpace(s[start:]))
-	return out
+	return false
 }
-
-func trimSpace(s string) string {
-	for len(s) > 0 && s[0] == ' ' {
-		s = s[1:]
+func (l *Limiter) RequestIP(r *http.Request) string {
+	peer := ExtractIP(r)
+	if !l.IsTrustedProxy(peer) {
+		return peer
 	}
-	for len(s) > 0 && s[len(s)-1] == ' ' {
-		s = s[:len(s)-1]
+	// Walk from the proxy nearest us to the first untrusted hop.
+	hops := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(hops[i]))
+		if ip == nil {
+			continue
+		}
+		peer = ip.String()
+		if !l.IsTrustedProxy(peer) {
+			return peer
+		}
 	}
-	return s
+	if peer == ExtractIP(r) {
+		if ip := net.ParseIP(r.Header.Get("X-Real-IP")); ip != nil {
+			return ip.String()
+		}
+	}
+	return peer
 }

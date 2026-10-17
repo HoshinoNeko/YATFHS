@@ -1,0 +1,8 @@
+/data/
+/yatfhs
+*.test
+.DS_Store
+.env
+/node_modules
+
+/test-results/

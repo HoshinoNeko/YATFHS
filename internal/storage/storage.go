@@ -2,21 +2,19 @@ package storage
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
-
-const idChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-const idLen = 12
 
 type FileMeta struct {
 	ID          string    `json:"id"`
@@ -26,200 +24,217 @@ type FileMeta struct {
 	UploadedAt  time.Time `json:"uploaded_at"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	UploaderIP  string    `json:"uploader_ip"`
+	StorageName string    `json:"storage_name,omitempty"`
 }
 
-func (m *FileMeta) IsExpired() bool {
-	return time.Now().After(m.ExpiresAt)
-}
+func (m *FileMeta) IsExpired() bool { return !m.ExpiresAt.IsZero() && !time.Now().Before(m.ExpiresAt) }
 
 type Store struct {
 	dir  string
 	mu   sync.RWMutex
-	meta map[string]*FileMeta // id -> meta
+	meta map[string]*FileMeta
 }
 
 func New(dir string) (*Store, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("create storage dir: %w", err)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
 	}
-	s := &Store{
-		dir:  dir,
-		meta: make(map[string]*FileMeta),
-	}
+	s := &Store{dir: dir, meta: map[string]*FileMeta{}}
 	if err := s.loadMeta(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
-
-func (s *Store) Save(file multipart.File, header *multipart.FileHeader, expireSec int, uploaderIP string) (*FileMeta, error) {
-	id, err := generateID()
+func (s *Store) Dir() string { return s.dir }
+func (s *Store) Save(file multipart.File, header *multipart.FileHeader, expire int, ip string) (*FileMeta, error) {
+	return s.SaveReader(file, header.Filename, expire, ip)
+}
+func (s *Store) SaveReader(src io.Reader, name string, expire int, ip string) (*FileMeta, error) {
+	id, err := NewID()
 	if err != nil {
 		return nil, err
 	}
-
-	// Sanitize filename
-	origName := sanitizeFilename(header.Filename)
-
-	// Detect content type
+	dir := filepath.Join(s.dir, id)
+	if err = os.Mkdir(dir, 0700); err != nil {
+		return nil, err
+	}
+	success := false
+	defer func() {
+		if !success {
+			os.RemoveAll(dir)
+		}
+	}()
+	dst, err := os.OpenFile(filepath.Join(dir, "content"), os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	size, err := io.Copy(dst, src)
+	if err != nil {
+		dst.Close()
+		return nil, err
+	}
+	if _, err = dst.Seek(0, io.SeekStart); err != nil {
+		dst.Close()
+		return nil, err
+	}
 	buf := make([]byte, 512)
-	n, _ := file.Read(buf)
-	ct := http.DetectContentType(buf[:n])
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
+	n, readErr := dst.Read(buf)
+	if readErr != nil && readErr != io.EOF {
+		dst.Close()
+		return nil, readErr
+	}
+	if err = dst.Close(); err != nil {
 		return nil, err
 	}
-
-	// Create directory for this file
-	fileDir := filepath.Join(s.dir, id)
-	if err := os.MkdirAll(fileDir, 0755); err != nil {
-		return nil, fmt.Errorf("create file dir: %w", err)
-	}
-
-	// Write file
-	dst, err := os.Create(filepath.Join(fileDir, origName))
-	if err != nil {
-		return nil, fmt.Errorf("create file: %w", err)
-	}
-	defer dst.Close()
-
-	size, err := io.Copy(dst, file)
-	if err != nil {
-		os.RemoveAll(fileDir)
-		return nil, fmt.Errorf("write file: %w", err)
-	}
-
 	now := time.Now()
-	m := &FileMeta{
-		ID:          id,
-		OrigName:    origName,
-		Size:        size,
-		ContentType: ct,
-		UploadedAt:  now,
-		ExpiresAt:   now.Add(time.Duration(expireSec) * time.Second),
-		UploaderIP:  uploaderIP,
+	m := &FileMeta{ID: id, OrigName: sanitizeFilename(name), Size: size, ContentType: http.DetectContentType(buf[:n]), UploadedAt: now, UploaderIP: ip, StorageName: "content"}
+	if expire > 0 {
+		m.ExpiresAt = now.Add(time.Duration(expire) * time.Second)
 	}
-
-	// Persist metadata
-	if err := s.saveMeta(m); err != nil {
-		os.RemoveAll(fileDir)
+	if err = WriteJSON(filepath.Join(dir, "meta.json"), m); err != nil {
 		return nil, err
 	}
-
 	s.mu.Lock()
 	s.meta[id] = m
 	s.mu.Unlock()
-
+	success = true
 	return m, nil
 }
-
 func (s *Store) Get(id string) (*FileMeta, error) {
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 	m, ok := s.meta[id]
-	s.mu.RUnlock()
-
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-	if m.IsExpired() {
+	if !ok || m.IsExpired() {
 		return nil, os.ErrNotExist
 	}
 	return m, nil
 }
-
 func (s *Store) FilePath(id, name string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if m := s.meta[id]; m != nil && m.StorageName != "" {
+		name = m.StorageName
+	}
 	return filepath.Join(s.dir, id, name)
 }
-
+func (s *Store) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.meta[id]; !ok {
+		return os.ErrNotExist
+	}
+	if err := os.RemoveAll(filepath.Join(s.dir, id)); err != nil {
+		return err
+	}
+	delete(s.meta, id)
+	return nil
+}
 func (s *Store) DeleteExpired() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	var toDelete []string
+	n := 0
 	for id, m := range s.meta {
 		if m.IsExpired() {
-			toDelete = append(toDelete, id)
+			if os.RemoveAll(filepath.Join(s.dir, id)) == nil {
+				delete(s.meta, id)
+				n++
+			}
 		}
 	}
-	for _, id := range toDelete {
-		delete(s.meta, id)
-		os.RemoveAll(filepath.Join(s.dir, id))
-	}
-	return len(toDelete)
+	return n
 }
-
-func (s *Store) Stats() (totalFiles int, totalBytes int64) {
+func (s *Store) Stats() (int, int64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	var n int
+	var size int64
 	for _, m := range s.meta {
 		if !m.IsExpired() {
-			totalFiles++
-			totalBytes += m.Size
+			n++
+			size += m.Size
 		}
 	}
-	return
+	return n, size
 }
-
-// --- internal ---
-
-func (s *Store) saveMeta(m *FileMeta) error {
-	metaPath := filepath.Join(s.dir, m.ID, "meta.json")
-	f, err := os.Create(metaPath)
-	if err != nil {
-		return err
+func (s *Store) List() []FileMeta {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []FileMeta{}
+	for _, m := range s.meta {
+		if !m.IsExpired() {
+			out = append(out, *m)
+		}
 	}
-	defer f.Close()
-	return json.NewEncoder(f).Encode(m)
+	sort.Slice(out, func(i, j int) bool { return out[i].UploadedAt.After(out[j].UploadedAt) })
+	return out
 }
-
 func (s *Store) loadMeta() error {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
-		return nil // empty dir is fine
+		return err
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		metaPath := filepath.Join(s.dir, e.Name(), "meta.json")
-		f, err := os.Open(metaPath)
+		b, err := os.ReadFile(filepath.Join(s.dir, e.Name(), "meta.json"))
 		if err != nil {
 			continue
 		}
 		var m FileMeta
-		if err := json.NewDecoder(f).Decode(&m); err != nil {
-			f.Close()
+		if json.Unmarshal(b, &m) != nil || m.ID != e.Name() || m.OrigName != sanitizeFilename(m.OrigName) || (m.StorageName != "" && m.StorageName != "content") {
 			continue
 		}
-		f.Close()
-		if !m.IsExpired() {
-			s.meta[m.ID] = &m
-		}
+		// Keep expired entries so cleanup removes files left over across a restart.
+		s.meta[m.ID] = &m
 	}
 	return nil
 }
-
-func generateID() (string, error) {
-	b := make([]byte, idLen)
-	for i := range b {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(idChars))))
-		if err != nil {
-			return "", err
-		}
-		b[i] = idChars[n.Int64()]
+func NewID() (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	return string(b), nil
+	return hex.EncodeToString(b), nil
 }
-
+func WriteJSON(path string, value any) error {
+	b, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".json-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err = f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
 func sanitizeFilename(name string) string {
-	// Keep only the base name
-	name = filepath.Base(name)
-	// Replace any path separators
-	name = strings.ReplaceAll(name, "/", "_")
-	name = strings.ReplaceAll(name, "\\", "_")
-	// Trim spaces
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, name)
 	name = strings.TrimSpace(name)
-	if name == "" || name == "." {
+	if name == "" || name == "." || name == ".." {
 		return "file"
+	}
+	if len(name) > 240 {
+		return fmt.Sprintf("file%s", filepath.Ext(name)[:min(len(filepath.Ext(name)), 20)])
 	}
 	return name
 }
