@@ -67,7 +67,7 @@ function addFiles(files) {
  for (const file of files) {
   if (rows.some(r => r.file.name === file.name && r.file.size === file.size && r.file.lastModified === file.lastModified)) continue;
   const card = document.createElement('div'); card.className = 'queue-item';
-  const head = document.createElement('div'); head.className = 'queue-head';
+  const head = document.createElement('label'); head.className = 'queue-head';
   const select = document.createElement('input'); select.type = 'checkbox'; select.disabled = true; select.setAttribute('aria-label',`Select ${file.name} for download`);
   const name = document.createElement('span'); name.className = 'queue-name'; name.textContent = `${file.name} · ${bytes(file.size)}`;
   head.append(select, name);

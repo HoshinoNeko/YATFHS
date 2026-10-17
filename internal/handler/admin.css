@@ -1,3 +1,43 @@
-main{max-width:1120px}.panel{padding:1.3rem;border:1px solid var(--border);background:var(--surface);border-radius:6px;margin:1.2rem 0}.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem}.stat{background:var(--bg);padding:.8rem;border-radius:4px}.stat strong{display:block;font:1.2rem var(--mono);margin-top:.4rem}.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.8rem}.settings-grid label{display:flex;flex-direction:column;gap:.4rem;font-size:.8rem}.table-wrap{overflow:auto;max-height:520px}table{border-collapse:collapse;width:100%;font:.75rem var(--mono)}td,th{padding:.6rem;border-bottom:1px solid var(--border);text-align:left;word-break:break-word}th{color:var(--muted);position:sticky;top:0;background:var(--surface)}h2{font:1rem var(--mono);margin-bottom:.8rem}input:not([type=checkbox]){width:100%}#token{max-width:520px}#loginForm{display:flex;gap:.7rem;flex-wrap:wrap}#loginForm button{flex:0 1 auto}.full{grid-column:1/-1}.log-filter{margin-bottom:.8rem}
+main { max-width: 1120px; }
+.panel { padding: var(--space-6); margin: var(--space-6) 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+h2 { margin-bottom: var(--space-3); font: 500 1rem/1.5 var(--mono); }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(144px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+.stat { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-2); min-width: 0; min-height: 96px; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--control-radius); background: var(--bg); }
+.stat strong { display: block; font: 500 1.25rem/1.4 var(--mono); overflow-wrap: anywhere; }
+.settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.settings-grid label { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; color: var(--muted); font: 400 .75rem/1.5 var(--mono); }
+.settings-grid input { width: 100%; }
+.full { grid-column: 1 / -1; }
+.admin-toolbar .btn-copy { min-width: 184px; }
+#lastRefresh { margin-left: auto; }
+#loginForm { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: var(--space-3); max-width: 720px; margin-bottom: var(--space-4); align-items: start; }
+#token { width: 100%; }
+#expireOptions { max-width: 656px; }
+.admin-expiry { display: grid; grid-template-columns: 160px minmax(240px, 320px); gap: var(--space-4); align-items: start; }
+.admin-expiry #customExpire, .admin-expiry #expireAt { width: 100%; }
+.admin-expiry + .small { margin-top: var(--space-2); }
+.table-wrap { overflow: auto; max-height: 520px; }
+table { width: 100%; min-width: 850px; border-collapse: collapse; font: 400 .75rem/1.6 var(--mono); }
+td, th { padding: var(--space-3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 500; white-space: nowrap; overflow-wrap: normal; }
+td:first-child, td:nth-last-child(-n+3) { white-space: nowrap; }
+.file-select { display: inline-flex; min-width: 32px; min-height: 32px; align-items: center; justify-content: center; cursor: pointer; }
+#adminLogs td:nth-child(4) { min-width: 260px; white-space: normal; }
+#adminLogs td:nth-child(2) { min-width: 80px; }
+#adminLogs td:nth-child(3) { min-width: 100px; }
+.log-filter { min-width: 160px; margin-bottom: var(--space-4); }
 
-table{min-width:850px}td:first-child,td:nth-last-child(-n+3){white-space:nowrap}#adminLogs td:nth-child(4){min-width:260px;white-space:normal;overflow-wrap:anywhere}#adminLogs td:nth-child(2){min-width:80px}#adminLogs td:nth-child(3){min-width:100px}
+@media (max-width: 640px) {
+  .panel { padding: var(--space-4); }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: var(--space-3); }
+  .stat strong { font-size: 1.0625rem; }
+  .settings-grid, .admin-expiry, #loginForm { grid-template-columns: minmax(0, 1fr); }
+  .admin-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .admin-toolbar .btn-copy { min-width: 0; width: 100%; }
+  #lastRefresh { margin-left: 0; }
+  .policy-actions > .btn-upload, .file-actions > .btn-copy { width: 100%; }
+  .policy-actions > .small { flex-basis: 100%; }
+  .file-select { min-width: 44px; min-height: 44px; }
+  .log-filter { width: 100%; }
+}

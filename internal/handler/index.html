@@ -11,10 +11,10 @@
 </head>
 <body>
 <main>
-<header class="header"><div class="topline"><div class="logo"><span class="prompt">$</span> YATFHS</div><a class="small" href="/admin">Admin</a></div><p class="tagline" id="limitsLabel">Temporary file hosting</p></header>
+<header class="header"><div class="topline"><div class="logo"><span class="prompt">$</span> YATFHS</div><a class="nav-link" href="/admin">Admin</a></div><p class="tagline" id="limitsLabel">Temporary file hosting</p></header>
 <div class="drop-zone" id="dropZone"><input type="file" id="fileInput" multiple aria-label="Choose files to upload"><div class="drop-icon">⬆</div><div class="drop-primary">Drop files here or click to browse</div><div class="drop-secondary" id="sizeLabel">Loading upload limits…</div><div class="file-selected" id="fileLabel"></div></div>
 <div class="field"><label for="customExpire">Expires after</label><div class="expire-row" id="expireOptions"></div><div class="custom-expiry"><input type="number" id="customExpire" step="1" aria-label="Custom expiry in seconds"><span class="small" id="expireHint">seconds</span></div></div>
-<div class="batch"><button class="btn-upload" id="uploadBtn" disabled>Upload files</button><button class="btn-copy" id="pauseBtn" disabled>Pause</button><span class="small" id="overall" role="status"></span></div>
+<div class="batch upload-actions"><button class="btn-upload" id="uploadBtn" disabled>Upload files</button><button class="btn-copy" id="pauseBtn" disabled>Pause</button><span class="small" id="overall" role="status"></span></div>
 <p class="notice" id="uploadError" role="alert"></p>
 <p class="small">Interrupted upload? Re-select the same files within 24 hours to resume. Expiry begins when upload completes.</p>
 <div id="queue"></div>
